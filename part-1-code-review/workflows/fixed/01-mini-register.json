@@ -1,0 +1,315 @@
+{
+  "name": "01 Mini Register",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mini-register",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "6099d37c-d499-4f61-b182-db7dc468c72f",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        22672,
+        3056
+      ],
+      "webhookId": "mini-register-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || {};\nconst email = (body.email || '').trim().toLowerCase();\nconst password = body.password || '';\nconst name = body.name || '';\n\nif (!email || !email.includes('@')) {\n  throw new Error('Invalid email');\n}\nif (password.length < 6) {\n  throw new Error('Password too short');\n}\nif (!name) {\n  throw new Error('Name required');\n}\n\nreturn { email, password, name };"
+      },
+      "id": "f2ac4804-292a-4786-b953-4c8bf981455b",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        23312,
+        3056
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id FROM users WHERE email = '{{ $json.email }}' LIMIT 1",
+        "options": {}
+      },
+      "id": "f70c5c52-9b90-4807-a28b-5bfe82dfad44",
+      "name": "Check Email Exists",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        23728,
+        3056
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "sn6gCmm7bsMySuPG",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const bcrypt = require('bcryptjs');\nconst password = $('Validate Input').first().json.password;\nconst hash = bcrypt.hashSync(password, 8);\nconst code = String(Math.floor(100000 + Math.random() * 900000));\nreturn [{ json: { password_hash: hash, code } }];"
+      },
+      "id": "7e9abcc4-1b51-419d-a76b-284c2e077c02",
+      "name": "Hash Password",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        24144,
+        3056
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO users (email, password_hash) VALUES ('{{ $('Validate Input').item.json.email }}', '{{ $json.password_hash }}') RETURNING id",
+        "options": {}
+      },
+      "id": "6ad2335d-45fa-4783-b098-8dfc91d3cd22",
+      "name": "Insert User",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        24320,
+        3056
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "sn6gCmm7bsMySuPG",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO verification_codes (user_id, code, expires_at) VALUES ('{{ $('Insert User').item.json.id }}', '{{ $('Hash Password').item.json.code }}', NOW() + INTERVAL '30 minutes')",
+        "options": {}
+      },
+      "id": "60c84d6d-218d-4583-beea-130983e4a8a4",
+      "name": "Save Code",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        24736,
+        3056
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "sn6gCmm7bsMySuPG",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.sendgrid.com/v3/mail/send",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"personalizations\": [{ \"to\": [{ \"email\": \"{{ $('Validate Input').first().json.email }}\" }] }],\n  \"from\": { \"email\": \"noreply@example.com\" },\n  \"subject\": \"Your verification code\",\n  \"content\": [{ \"type\": \"text/plain\", \"value\": \"Your code: {{ $('Hash Password').first().json.code }}\" }]\n}",
+        "options": {}
+      },
+      "id": "a7e3102b-8b2a-4611-8c46-b83ce07f7713",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        25168,
+        3056
+      ],
+      "notesInFlow": false,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "usqzo8Tr8PPyftJd",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": true, \"message\": \"Verification code sent\" }",
+        "options": {}
+      },
+      "id": "60fa16d1-d936-401b-9f5e-39f581cf4bce",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        25664,
+        3056
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "email-exists",
+              "leftValue": "={{ $json.id }}.toString()",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7ed8e0a5-1d00-4feb-9ba2-19fe34063514",
+      "name": "If Email Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        23952,
+        3056
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": false, \"message\": \"Email already registered\" }",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "6cc2fa96-d8c3-428b-8798-af4bd8378a0e",
+      "name": "Respond Error Email",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        23952,
+        3264
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Check Email Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Email Exists": {
+      "main": [
+        [
+          {
+            "node": "If Email Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Email Exists": {
+      "main": [
+        [
+          {
+            "node": "Respond Error Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Hash Password",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hash Password": {
+      "main": [
+        [
+          {
+            "node": "Insert User",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert User": {
+      "main": [
+        [
+          {
+            "node": "Save Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Code": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "21906435-a244-4a61-aeda-561ffa8faa48",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "3f52b565a3cb90a871db688b0c72101c5940ae8142bfdffddd83472b62cb2ba0"
+  },
+  "id": "Sja8J35w3pS60tVk",
+  "tags": []
+}
