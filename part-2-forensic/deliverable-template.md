@@ -80,13 +80,13 @@
 
 ### Где именно поменял
 - Нода `Build Plan`, JS-код, секция `mixInner`.
-- Изменена ffmpeg-команда:
-  - До: `[1:a]atempo=$RATIO,afade=t=out:st=$FADE_V:d=0.5[voice]`
-  - После: `[1:a]atempo=$RATIO,afade=t=in:st=0:d=0.5,afade=t=out:st=$FADE_V:d=0.5[voice]`
+- Изменены обе voice-ветки:
+  - voice only: `[1:a]atempo=$RATIO,afade=t=in:st=0:d=0.5,afade=t=out:st=$FADE_V:d=0.5[voice]`
+  - music + voice: `[2:a]atempo=$RATIO,afade=t=in:st=0:d=0.5,afade=t=out:st=$FADE_V:d=0.5[voice]`
 
 ### Как тестировал
 - Проверил синтаксис JS кода.
-- Убедился, что `split/join` корректно обработал обе ветки (voice only и music+voice).
+- Проверил, что fade-in добавлен в обе ветки `mixInner` (voice only и music+voice).
 
 ### Файл
 `combine-worker-mvp2-fixed.json` - в этой же папке.
